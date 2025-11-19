@@ -1,0 +1,234 @@
+import asyncio
+import speech_recognition as sr
+import edge_tts
+import datetime
+import webbrowser
+import os
+import wikipedia
+import pyjokes
+from googletrans import Translator
+from playsound import playsound
+
+# ----------- SPEAK FUNCTION -----------
+async def speak(text):
+    try:
+        tts = edge_tts.Communicate(text=text, voice="en-US-JennyNeural")
+        output_path = "response.mp3"
+        await tts.save(output_path)
+        playsound(output_path)
+        os.remove(output_path)
+        print(f"Assistant: {text}")
+    except Exception as e:
+        print("Error in speaking:", e)
+
+# ----------- LISTEN FUNCTION -----------
+def listen():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("\nListening...")
+        r.pause_threshold = 1
+        audio = r.listen(source)
+        try:
+            text = r.recognize_google(audio)
+            print("You said:", text)
+            return text.lower()
+        except sr.UnknownValueError:
+            print("Sorry, I didn't catch that.")
+            return ""
+        except sr.RequestError:
+            print("Network error.")
+            return ""
+
+# ----------- DICTATION FUNCTION -----------
+def write_paragraph():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("\n📝 Dictation mode activated. Speak your paragraph. Say 'stop writing' when done.")
+        paragraph = []
+        while True:
+            try:
+                audio = r.listen(source)
+                text = r.recognize_google(audio)
+                if "stop writing" in text.lower():
+                    print("Dictation stopped.")
+                    break
+                paragraph.append(text)
+                print("You said:", text)
+            except sr.UnknownValueError:
+                print("Couldn't understand. Please repeat.")
+            except sr.RequestError:
+                print("Network error while listening.")
+                break
+
+    full_text = " ".join(paragraph)
+    with open("spoken_paragraph.txt", "w", encoding="utf-8") as f:
+        f.write(full_text)
+    print("\n✅ Paragraph saved to 'spoken_paragraph.txt'")
+    return full_text
+
+# ----------- TRANSLATE FUNCTION -----------
+def translate_text(command):
+    translator = Translator()
+    try:
+        if "to" in command:
+            parts = command.split("to")
+            text_to_translate = parts[0].replace("translate", "").strip()
+            target_lang = parts[1].strip().lower()
+
+            lang_dict = {
+                "hindi": "hi", "english": "en", "spanish": "es",
+                "french": "fr", "german": "de", "japanese": "ja",
+                "chinese": "zh-cn", "korean": "ko", "italian": "it",
+            }
+
+            lang_code = lang_dict.get(target_lang, "en")
+            result = translator.translate(text_to_translate, dest=lang_code)
+            print(f"\nTranslation ({target_lang}): {result.text}")
+            return result.text, target_lang
+        else:
+            print("Please specify the target language, e.g., 'translate hello to hindi'")
+            return None, None
+    except Exception as e:
+        print("Translation error:", e)
+        return None, None
+
+# ----------- REPEAT AFTER ME FEATURE -----------
+async def repeat_after_me():
+    await speak("Okay, I am listening. Say something, and I will repeat after you.")
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        while True:
+            print("\n🎤 Speak something (say 'stop repeating' to end)...")
+            audio = r.listen(source)
+            try:
+                text = r.recognize_google(audio)
+                print("You said:", text)
+                if "stop repeating" in text.lower():
+                    await speak("Okay, I will stop repeating.")
+                    break
+                await speak(text)
+            except sr.UnknownValueError:
+                print("Sorry, I didn't understand.")
+            except sr.RequestError:
+                print("Network error.")
+                break
+
+# ----------- WAKE UP MODE -----------
+async def wake_up_mode():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        while True:
+            print("\nWaiting for wake word... (say 'hello assistant' to activate)")
+            audio = r.listen(source)
+            try:
+                text = r.recognize_google(audio).lower()
+                if "hello assistant" in text:
+                    await speak("Yes, I’m here! How can I help you?")
+                    return  # Exit wake mode and go to main assistant
+            except:
+                pass  # Just keep listening silently
+
+# ----------- MAIN FUNCTION -----------
+async def main():
+    await speak("Voice assistant is on standby. Say 'Hello Assistant' to wake me up.")
+    while True:
+        # Wait until the wake word is spoken
+        await wake_up_mode()
+
+        # Once active, assistant listens for commands
+        while True:
+            command = listen()
+            if not command:
+                continue
+
+            # --- Basic greetings ---
+            if "hello" in command:
+                await speak("Hi there! How are you today?")
+            elif "how are you" in command:
+                await speak("I'm doing great, thank you! What about you?")
+            elif "your name" in command:
+                await speak("I’m your personal voice assistant created in Python!")
+
+            # --- Time & Date ---
+            elif "time" in command:
+                current_time = datetime.datetime.now().strftime("%I:%M %p")
+                await speak(f"The time is {current_time}")
+            elif "date" in command:
+                current_date = datetime.datetime.now().strftime("%A, %B %d, %Y")
+                await speak(f"Today is {current_date}")
+
+            # --- Wikipedia Search ---
+            elif "tell me about" in command:
+                topic = command.replace("tell me about", "").strip()
+                await speak(f"Searching Wikipedia for {topic}")
+                try:
+                    summary = wikipedia.summary(topic, sentences=2)
+                    await speak(summary)
+                except:
+                    await speak("Sorry, I couldn't find information on that topic.")
+
+            # --- Google Search ---
+            elif "search" in command:
+                topic = command.replace("search", "").strip()
+                await speak(f"Searching Google for {topic}")
+                webbrowser.open(f"https://www.google.com/search?q={topic}")
+
+            # --- Play Music / YouTube ---
+            elif "play" in command:
+                song = command.replace("play", "").strip()
+                await speak(f"Playing {song} on YouTube")
+                webbrowser.open(f"https://www.youtube.com/results?search_query={song}")
+
+            # --- Jokes ---
+            elif "joke" in command:
+                joke = pyjokes.get_joke()
+                await speak(joke)
+
+            # --- System Commands ---
+            elif "open youtube" in command:
+                await speak("Opening YouTube")
+                webbrowser.open("https://www.youtube.com")
+            elif "open google" in command:
+                await speak("Opening Google")
+                webbrowser.open("https://www.google.com")
+            elif "open notepad" in command:
+                await speak("Opening Notepad")
+                os.system("notepad")
+            elif "open calculator" in command:
+                await speak("Opening Calculator")
+                os.system("calc")
+
+            # --- ✍️ Write Paragraph ---
+            elif "write a paragraph" in command or "write an paragraph" in command:
+                await speak("Okay, I am listening. Please start speaking your paragraph.")
+                paragraph = write_paragraph()
+                await speak("Your paragraph has been written successfully.")
+                print("\nFinal Paragraph:\n", paragraph)
+
+            # --- 🌍 Translate ---
+            elif "translate" in command:
+                await speak("Okay, translating your sentence.")
+                result, lang = translate_text(command)
+                if result:
+                    await speak(f"The translation in {lang} is: {result}")
+                else:
+                    await speak("Sorry, I couldn't translate that.")
+
+            # --- 🗣️ Repeat After Me ---
+            elif "repeat after me" in command:
+                await repeat_after_me()
+
+            # --- Sleep / Stop / Exit ---
+            elif "sleep" in command or "go to sleep" in command:
+                await speak("Okay, going to sleep. Say 'Hello Assistant' when you need me again.")
+                break  # Goes back to wake-up mode
+            elif "stop" in command or "bye" in command or "exit" in command:
+                await speak("Goodbye! Have a great day!")
+                return
+
+            else:
+                await speak("Sorry, I didn’t understand that. Could you say it again?")
+
+# ----------- RUN -----------
+if __name__ == "__main__":
+    asyncio.run(main())
